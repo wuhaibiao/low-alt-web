@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>低空无人机感知系统</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/login.css">
+    <!-- 引入Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入Chart.js用于图表 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入Leaflet地图库 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- 引入图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 全屏加载动画 -->
+        <div v-if="isProcessing" class="fullscreen-loading-overlay">
+            <div class="loading-content">
+                <div class="spinner-circle"></div>
+                <div class="spinner-dot"></div>
+                <p class="loading-text">处理中...</p>
+            </div>
+        </div>
+        <!-- 登录界面 -->
+        <div v-if="!isAuthenticated" class="login-container">
+            <div class="login-box">
+                <div class="login-header">
+                    <i class="fas fa-drone"></i>
+                    <h1>低空无人机感知系统</h1>
+                </div>
+                
+                <div class="login-tabs">
+                    <button :class="{'active': loginMode === 'login'}" @click="loginMode = 'login'">登录</button>
+                    <button :class="{'active': loginMode === 'register'}" @click="loginMode = 'register'">注册</button>
+                </div>
+
+                <!-- 登录表单 -->
+                <form v-if="loginMode === 'login'" @submit.prevent="handleLogin" class="login-form">
+                    <div class="form-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" v-model="loginForm.username" placeholder="用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="loginForm.password" placeholder="密码" required>
+                    </div>
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i>
+                        登录
+                    </button>
+                </form>
+
+                <!-- 注册表单 -->
+                <form v-if="loginMode === 'register'" @submit.prevent="handleRegister" class="login-form">
+                    <div class="form-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" v-model="registerForm.username" placeholder="用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" v-model="registerForm.email" placeholder="邮箱" required>
+                    </div>
+                    <div class="form-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="registerForm.password" placeholder="密码" required>
+                    </div>
+                    <div class="form-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="registerForm.confirmPassword" placeholder="确认密码" required>
+                    </div>
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-user-plus"></i>
+                        注册
+                    </button>
+                </form>
+
+                <div v-if="errorMessage" class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    {{ errorMessage }}
+                </div>
+            </div>
+        </div>
+
+        <!-- 主系统界面 -->
+        <div v-if="isAuthenticated" class="main-container">
+            <!-- 侧边导航菜单 -->
+            <nav class="sidebar" :class="{collapsed: sidebarCollapsed}">
+                <div class="sidebar-header">
+                    <i class="fas fa-drone"></i>
+                    <span v-if="!sidebarCollapsed">无人机系统</span>
+                    <button @click="toggleSidebar" class="sidebar-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+                <ul class="sidebar-menu">
+                    <li :class="{active: currentView === 'dashboard'}" @click="switchView('dashboard')">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span v-if="!sidebarCollapsed">监控面板</span>
+                    </li>
+                    <li :class="{active: currentView === 'devices'}" @click="switchView('devices')">
+                        <i class="fas fa-cogs"></i>
+                        <span v-if="!sidebarCollapsed">设备管理</span>
+                    </li>
+                    <li :class="{active: currentView === 'tasks'}" @click="switchView('tasks')">
+                        <i class="fas fa-tasks"></i>
+                        <span v-if="!sidebarCollapsed">任务调度</span>
+                    </li>
+                    <li :class="{active: currentView === 'analysis'}" @click="switchView('analysis')">
+                        <i class="fas fa-chart-line"></i>
+                        <span v-if="!sidebarCollapsed">数据分析</span>
+                    </li>
+                    <li :class="{active: currentView === 'alerts'}" @click="switchView('alerts')">
+                        <i class="fas fa-bell"></i>
+                        <span v-if="!sidebarCollapsed">告警中心</span>
+                        <span v-if="unreadAlerts > 0" class="badge">{{ unreadAlerts }}</span>
+                    </li>
+                    <li :class="{active: currentView === 'users'}" @click="switchView('users')">
+                        <i class="fas fa-users"></i>
+                        <span v-if="!sidebarCollapsed">用户管理</span>
+                    </li>
+                    <li :class="{active: currentView === 'history'}" @click="switchView('history')">
+                        <i class="fas fa-history"></i>
+                        <span v-if="!sidebarCollapsed">历史数据</span>
+                    </li>
+                    <li :class="{active: currentView === 'settings'}" @click="switchView('settings')">
+                        <i class="fas fa-cog"></i>
+                        <span v-if="!sidebarCollapsed">系统设置</span>
+                    </li>
+                </ul>
+            </nav>
+
+            <!-- 主内容区域 -->
+            <div class="main-wrapper" :class="{expanded: sidebarCollapsed}">
+                <!-- 顶部导航 -->
+                <header class="header">
+                <div class="header-left">
+                    <i class="fas fa-drone"></i>
+                    <h1>低空无人机感知系统</h1>
+                    <span class="data-label">数据看板</span>
+                </div>
+                <div class="header-right">
+                    <span class="current-time">{{ currentTime }}</span>
+                    <div class="user-info">
+                        <span>欢迎，{{ currentUser }}</span>
+                        <button @click="logout" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 主内容区域 -->
+            <main class="main-content">
+                <!-- 监控面板视图 -->
+                <div v-if="currentView === 'dashboard'" class="view-container" data-view="dashboard">
+                    <!-- 原有的监控面板内容 -->
+                    <aside class="left-panel">
+                    <!-- 无人机监测概况 -->
+                    <div class="panel-card">
+                        <h3>无人机监测概况</h3>
+                        <div class="drone-summary">
+                            <div class="summary-circle">
+                                <div class="circle-number">{{ totalDrones }}</div>
+                                <div class="circle-label">架无人机</div>
+                            </div>
+                            <div class="status-list">
+                                <div class="status-item">
+                                    <span class="status-dot online"></span>
+                                    <span>在线设备</span>
+                                    <span class="count">{{ onlineDrones }}</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-dot flying"></span>
+                                    <span>飞行设备</span>
+                                    <span class="count">{{ flyingDrones }}</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-dot task"></span>
+                                    <span>任务执行</span>
+                                    <span class="count">{{ taskDrones }}</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-dot alert"></span>
+                                    <span>告警设备</span>
+                                    <span class="count">{{ alertDrones }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 今日网端企业信息 -->
+                    <div class="panel-card">
+                        <h3>今日网端企业信息</h3>
+                        <div class="enterprise-table">
+                            <div class="table-header">
+                                <span>无人机编号</span>
+                                <span>状态</span>
+                                <span>任务时间</span>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="drone in droneList" :key="drone.id" class="table-row">
+                                    <span>{{ drone.name }}</span>
+                                    <span :class="'status-' + drone.status">{{ drone.statusText }}</span>
+                                    <span>{{ drone.time }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- 中央地图区域 -->
+                <section class="map-section">
+                    <div class="panel-card full-height">
+                        <h3>今日网端态势感知</h3>
+                        <div id="map" class="map-container"></div>
+                    </div>
+                </section>
+
+                <!-- 右侧面板 -->
+                <aside class="right-panel">
+                    <!-- 图片选择模块 -->
+                    <div class="panel-card image-upload-panel">
+                        <h3><i class="fas fa-images"></i> 选择原始图像</h3>
+                        <div class="upload-controls">
+                            <select v-model="selectedImageId" @change="handleImageSelect" class="image-select">
+                                <option value="">请选择图片</option>
+                                <option v-for="img in availableImages" :key="img.id" :value="img.id">
+                                    {{ img.name }}
+                                </option>
+                            </select>
+                        </div>
+                        
+                        <!-- 已选择图片预览 -->
+                        <div v-if="uploadedImage" class="uploaded-image-preview">
+                            <div class="image-thumbnail">
+                                <img :src="uploadedImage" alt="选中的图片" />
+                            </div>
+                            <div class="image-info">
+                                <div class="info-item">
+                                    <i class="fas fa-file-image"></i>
+                                    <span>{{ uploadedFileName }}</span>
+                                </div>
+                                <div class="info-item" v-if="extractedNumber">
+                                    <i class="fas fa-hashtag"></i>
+                                    <span>编号: {{ extractedNumber }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 提示消息 -->
+                        <div v-if="uploadMessage" :class="['upload-message', messageType]">
+                            <i v-if="messageType === 'processing'" class="fas fa-spinner"></i>
+                            <i v-else-if="messageType === 'success'" class="fas fa-check-circle"></i>
+                            <i v-else class="fas fa-exclamation-circle"></i>
+                            <span>{{ uploadMessage }}</span>
+                        </div>
+                    </div>
+
+                    <!-- 处理后图片展示模块 -->
+                    <div class="panel-card image-result-panel">
+                        <h3><i class="fas fa-image"></i> 处理结果预览</h3>
+                        <div class="image-result-container">
+                            <div class="processed-image-preview">
+                                <img v-if="processedImage" :src="processedImage" alt="处理后图像" />
+                                <div v-else class="placeholder">
+                                    <i class="fas fa-image"></i>
+                                    <span>请先选择图片</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="uploadedImage" class="match-status" :class="processedImage ? 'success' : 'error'">
+                            <i :class="processedImage ? 'fas fa-check-circle' : 'fas fa-times-circle'"></i>
+                            <span>{{ processedImage ? '处理成功' : '未找到对应处理结果' }}</span>
+                        </div>
+                    </div>
+
+                    <!-- 视频播放模块 -->
+                    <div class="panel-card video-player-panel">
+                        <h3><i class="fas fa-video"></i> 视频播放</h3>
+                        <div class="video-controls">
+                            <select v-model="selectedVideo" @change="changeVideo" class="video-select">
+                                <option value="">选择视频</option>
+                                <option v-for="video in videoList" :key="video.id" :value="video.id">
+                                    {{ video.title }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="video-container">
+                            <video 
+                                v-if="selectedVideo" 
+                                ref="videoPlayer"
+                                :src="currentVideoInfo.src" 
+                                controls 
+                                @error="handleVideoError"
+                                class="video-player"
+                            >
+                                您的浏览器不支持视频播放
+                            </video>
+                            <div v-else class="video-placeholder">
+                                <i class="fas fa-play-circle"></i>
+                                <span>请选择视频进行播放</span>
+                            </div>
+                        </div>
+                        <div v-if="selectedVideo" class="video-description">
+                            <i class="fas fa-info-circle"></i>
+                            <span>{{ currentVideoInfo.description }}</span>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- 设备管理视图 -->
+            <div v-if="currentView === 'devices'" class="view-container">
+                <div class="devices-management">
+                    <div class="panel-card">
+                        <h3>设备管理</h3>
+                        <div class="device-stats">
+                            <div class="stat-card">
+                                <i class="fas fa-drone"></i>
+                                <div>
+                                    <h4>{{ totalDevices }}</h4>
+                                    <p>设备总数</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-check-circle"></i>
+                                <div>
+                                    <h4>{{ onlineDevices }}</h4>
+                                    <p>在线设备</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="device-table">
+                            <div class="table-header">
+                                <span>设备名称</span>
+                                <span>状态</span>
+                                <span>类型</span>
+                                <span>操作</span>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="device in deviceList" :key="device.id" class="table-row">
+                                    <span>{{ device.name }}</span>
+                                    <span :class="'status-' + device.status">{{ device.statusText }}</span>
+                                    <span>{{ device.type }}</span>
+                                    <span>
+                                        <button class="btn-small">查看</button>
+                                        <button class="btn-small">编辑</button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 任务调度视图 -->
+            <div v-if="currentView === 'tasks'" class="view-container">
+                <div class="tasks-management">
+                    <div class="panel-card">
+                        <h3>任务调度</h3>
+                        <div class="task-stats">
+                            <div class="stat-card">
+                                <i class="fas fa-tasks"></i>
+                                <div>
+                                    <h4>{{ totalTasks }}</h4>
+                                    <p>总任务数</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-running"></i>
+                                <div>
+                                    <h4>{{ runningTasks }}</h4>
+                                    <p>执行中</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据分析视图 -->
+            <div v-if="currentView === 'analysis'" class="view-container">
+                <div class="analysis-management">
+                    <div class="panel-card">
+                        <h3>数据分析</h3>
+                        <div class="chart-container">
+                            <canvas id="dataChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 告警中心视图 -->
+            <div v-if="currentView === 'alerts'" class="view-container">
+                <div class="alerts-management">
+                    <div class="panel-card">
+                        <h3>告警中心</h3>
+                        <div class="alert-list">
+                            <div v-for="alert in alertList" :key="alert.id" class="alert-item" :class="alert.level">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <div class="alert-content">
+                                    <h4>{{ alert.title }}</h4>
+                                    <p>{{ alert.message }}</p>
+                                    <span class="alert-time">{{ alert.time }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户管理视图 -->
+            <div v-if="currentView === 'users'" class="view-container">
+                <div class="users-management">
+                    <div class="panel-card">
+                        <h3>用户管理</h3>
+                        <div class="user-table">
+                            <div class="table-header">
+                                <span>用户名</span>
+                                <span>邮箱</span>
+                                <span>角色</span>
+                                <span>操作</span>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="user in userList" :key="user.id" class="table-row">
+                                    <span>{{ user.username }}</span>
+                                    <span>{{ user.email }}</span>
+                                    <span>{{ user.role }}</span>
+                                    <span>
+                                        <button class="btn-small">编辑</button>
+                                        <button class="btn-small danger">删除</button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史数据视图 -->
+            <div v-if="currentView === 'history'" class="view-container">
+                <div class="history-management">
+                    <div class="panel-card">
+                        <h3>历史数据</h3>
+                        <div class="history-filters">
+                            <input type="date" v-model="historyStartDate">
+                            <input type="date" v-model="historyEndDate">
+                            <button class="btn btn-primary" @click="searchHistory">查询</button>
+                        </div>
+                        <div class="history-table">
+                            <div class="table-header">
+                                <span>时间</span>
+                                <span>设备</span>
+                                <span>事件</span>
+                                <span>详情</span>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="record in historyList" :key="record.id" class="table-row">
+                                    <span>{{ record.time }}</span>
+                                    <span>{{ record.device }}</span>
+                                    <span>{{ record.event }}</span>
+                                    <span>{{ record.details }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统设置视图 -->
+            <div v-if="currentView === 'settings'" class="view-container">
+                <div class="settings-management">
+                    <div class="panel-card">
+                        <h3>系统设置</h3>
+                        <div class="settings-form">
+                            <div class="form-group">
+                                <label>系统名称</label>
+                                <input type="text" v-model="settings.systemName">
+                            </div>
+                            <div class="form-group">
+                                <label>刷新间隔(秒)</label>
+                                <input type="number" v-model="settings.refreshInterval">
+                            </div>
+                            <div class="form-group">
+                                <label>告警级别</label>
+                                <select v-model="settings.alertLevel">
+                                    <option value="low">低</option>
+                                    <option value="medium">中</option>
+                                    <option value="high">高</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" @click="saveSettings">保存设置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+        </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/advanced-features.js"></script>
+    <script src="js/charts-visualization.js"></script>
+</body>
+</html>
