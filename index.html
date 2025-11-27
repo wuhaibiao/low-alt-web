@@ -225,10 +225,10 @@
                 <aside class="right-panel">
                     <!-- 图片选择模块 -->
                     <div class="panel-card image-upload-panel">
-                        <h3><i class="fas fa-images"></i> 选择原始图像</h3>
+                        <h3><i class="fas fa-images"></i> 选择原始图像对</h3>
                         <div class="upload-controls">
                             <select v-model="selectedImageId" @change="handleImageSelect" class="image-select">
-                                <option value="">请选择图片</option>
+                                <option value="">请选择图像对</option>
                                 <option v-for="img in availableImages" :key="img.id" :value="img.id">
                                     {{ img.name }}
                                 </option>
